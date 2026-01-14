@@ -66,3 +66,10 @@ def get_all_candidates():
 # ===================== STATIC FILES =====================
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/idcards", StaticFiles(directory=IDCARD_DIR), name="idcards")
+@app.get("/districts")
+async def get_districts():
+    try:
+        districts = list(db.districts.find({}, {"_id": 0, "name": 1}))
+        return [d["name"] for d in districts]
+    except Exception as e:
+        return {"error": str(e)}
