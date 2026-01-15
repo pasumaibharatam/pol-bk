@@ -264,17 +264,17 @@ def get_district_secretaries():
         {
             "name": "திரு. மு. செந்தில்",
             "district": "சென்னை",
-            "photo": "/assets/district_secretaries/dummmy.jfif"
+            "photo": "/assets/district_secretaries/dum.jpeg"
         },
         {
             "name": "திரு. க. ரமேஷ்",
             "district": "மதுரை",
-            "photo": "/assets/district_secretaries/dm.jfif"
+            "photo": "/assets/district_secretaries/dum.jpeg"
         },
         {
             "name": "திருமதி. சு. லதா",
             "district": "கோயம்புத்தூர்",
-            "photo": "/assets/district_secretaries/dummmy.jfif"
+            "photo": "/assets/district_secretaries/dum.jpeg"
         }
     ]
 
