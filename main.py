@@ -274,7 +274,7 @@ def get_district_secretaries():
         {
             "name": "திருமதி. சு. லதா",
             "district": "கோயம்புத்தூர்",
-            "photo": "/assets/district_secretaries/Nn.jpg"
+            "photo": "/assets/district_secretaries/dummmy.jfif"
         }
     ]
 
