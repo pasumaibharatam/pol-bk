@@ -417,7 +417,7 @@ def get_district_secretaries():
         {
             "name": "திரு. மு. செந்தில்",
             "district": "சென்னை",
-            "photo": "/assets/district_secretaries/dm.jfif"
+            "photo": "/assets/district_secretaries/dummmy.jfif"
         },
         {
             "name": "திரு. க. ரமேஷ்",
