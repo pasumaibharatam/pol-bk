@@ -115,6 +115,7 @@ async def register(
 
     # ---------- Mongo Document ----------
     candidate_doc = {
+        "membership_no": membership_no,
         "name": name,
         "father_name": father_name,
         "gender": gender,
@@ -265,7 +266,20 @@ from reportlab.lib.utils import ImageReader
 import qrcode
 import io
 import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+TAMIL_FONT_PATH = os.path.join(
+    BASE_DIR,
+    "fonts",
+    "NotoSansTamil-Regular.ttf"
+)
+
+if not os.path.exists(TAMIL_FONT_PATH):
+    raise RuntimeError(f"Tamil font not found at {TAMIL_FONT_PATH}")
+
+pdfmetrics.registerFont(
+    TTFont("Tamil", TAMIL_FONT_PATH)
+)
 CARD_WIDTH = 105 * mm
 CARD_HEIGHT = 74 * mm
 PARTY_GREEN = HexColor("#0B6623")
@@ -295,7 +309,7 @@ def download_idcard(mobile: str):
 
     # Party Name (Tamil)
     c.setFillColor(TEXT_WHITE)
-    c.setFont("Tamil", 14)
+    c.setFont("Tamil", 12)
     c.drawCentredString(
         CARD_WIDTH / 2,
         CARD_HEIGHT - 12 * mm,
