@@ -7,7 +7,12 @@ from datetime import datetime
 import os
 import urllib.parse
 import shutil
-
+from reportlab.lib.pagesizes import A6
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+import qrcode
+from fastapi.responses import FileResponse
 # ===================== APP =====================
 app = FastAPI()
 
@@ -98,7 +103,7 @@ async def register(
     # ---------- Duplicate check ----------
     if candidates_collection.find_one({"mobile": mobile}):
         raise HTTPException(status_code=400, detail="Mobile number already registered")
-
+    membership_no = generate_membership_no()
     # ---------- Save Photo ----------
     photo_path = ""
     if photo:
@@ -148,8 +153,68 @@ Constituency : {constituency}
     }
 
     result = candidates_collection.insert_one(candidate_doc)
-
+    pdf_url = create_id_card_pdf(candidate_doc)
+    candidates_collection.update_one(
+        {"_id": result.inserted_id},
+        {"$set": {"idcard": pdf_url}}
+    )
     return {
         "message": "Registration successful",
+        "membership_no": membership_no,
+        "idcard": pdf_url,
         "id": str(result.inserted_id)
     }
+def generate_membership_no():
+    count = candidates_collection.count_documents({})
+    return f"PBM-{datetime.now().year}-{count + 1:06d}"
+def create_id_card_pdf(candidate):
+    pdf_path = os.path.join(IDCARD_DIR, f"{candidate['mobile']}.pdf")
+
+    c = canvas.Canvas(pdf_path, pagesize=A6)
+    width, height = A6
+
+    # Header
+    c.setFont("Helvetica-Bold", 12)
+    c.drawCentredString(width / 2, height - 20, "பசுமை பாரத மக்கள் கட்சி")
+
+    # Photo
+    if candidate["photo"]:
+        photo_path = candidate["photo"].replace("/uploads/", "uploads/")
+        c.drawImage(photo_path, 10, height - 90, 60, 70)
+
+    # Details
+    c.setFont("Helvetica", 9)
+    c.drawString(80, height - 40, f"Name : {candidate['name']}")
+    c.drawString(80, height - 55, f"Mobile : {candidate['mobile']}")
+    c.drawString(80, height - 70, f"District : {candidate['district']}")
+    c.drawString(80, height - 85, f"Member ID : {candidate['membership_no']}")
+
+    # QR Code
+    qr_data = f"""
+Name: {candidate['name']}
+Mobile: {candidate['mobile']}
+Member ID: {candidate['membership_no']}
+"""
+    qr = qrcode.make(qr_data)
+    qr_path = f"temp_qr_{candidate['mobile']}.png"
+    qr.save(qr_path)
+
+    c.drawImage(qr_path, width - 70, 20, 50, 50)
+    os.remove(qr_path)
+
+    c.showPage()
+    c.save()
+
+    return f"/idcards/{candidate['mobile']}.pdf"
+@app.get("/admin/idcard/{mobile}")
+def download_idcard(mobile: str):
+    pdf_path = os.path.join(IDCARD_DIR, f"{mobile}.pdf")
+
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="ID card not found")
+
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"{mobile}_ID_CARD.pdf"
+    )
