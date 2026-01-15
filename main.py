@@ -1,18 +1,17 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from pymongo import MongoClient
-from bson.objectid import ObjectId
 from datetime import datetime
 import os
 import urllib.parse
 import shutil
+import io
+
 from reportlab.lib.pagesizes import A6
 from reportlab.pdfgen import canvas
-from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
+from fastapi.responses import StreamingResponse
 import qrcode
-from fastapi.responses import FileResponse
 # ===================== APP =====================
 app = FastAPI()
 
@@ -46,9 +45,7 @@ client = MongoClient(MONGO_URL)
 db = client["political_db"]
 candidates_collection = db["candidates"]
 
-# ===================== STATIC FILES =====================
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-app.mount("/idcards", StaticFiles(directory=IDCARD_DIR), name="idcards")
+
 
 # ===================== DISTRICTS =====================
 @app.get("/districts")
@@ -114,19 +111,7 @@ async def register(
         with open(photo_path, "wb") as buffer:
             shutil.copyfileobj(photo.file, buffer)
 
-    # ---------- Create ID Card File (placeholder) ----------
-    idcard_filename = f"{mobile}.txt"
-    idcard_path = os.path.join(IDCARD_DIR, idcard_filename)
-
-    with open(idcard_path, "w", encoding="utf-8") as f:
-        f.write(f"""
-ID CARD
--------
-Name      : {name}
-Mobile    : {mobile}
-District  : {district}
-Constituency : {constituency}
-        """)
+   
 
     # ---------- Mongo Document ----------
     candidate_doc = {
@@ -148,46 +133,49 @@ Constituency : {constituency}
         "voter_id": voter_id,
         "aadhaar": aadhaar,
         "photo": f"/uploads/{photo_filename}" if photo else "",
-        "idcard": f"/idcards/{idcard_filename}",
-        "created_at": datetime.utcnow()
+              
     }
 
     result = candidates_collection.insert_one(candidate_doc)
-    pdf_url = create_id_card_pdf(candidate_doc)
-    candidates_collection.update_one(
-        {"_id": result.inserted_id},
-        {"$set": {"idcard": pdf_url}}
-    )
+   
+    
     return {
         "message": "Registration successful",
         "membership_no": membership_no,
-        "idcard": pdf_url,
+        
         "id": str(result.inserted_id)
     }
 def generate_membership_no():
     count = candidates_collection.count_documents({})
     return f"PBM-{datetime.now().year}-{count + 1:06d}"
-def create_id_card_pdf(candidate):
-    pdf_path = os.path.join(IDCARD_DIR, f"{candidate['mobile']}.pdf")
 
-    c = canvas.Canvas(pdf_path, pagesize=A6)
+
+# ===================== DOWNLOAD ID CARD (REGENERATE PDF) =====================
+@app.get("/admin/idcard/{mobile}")
+def download_idcard(mobile: str):
+    candidate = candidates_collection.find_one({"mobile": mobile})
+
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A6)
     width, height = A6
 
     # Header
     c.setFont("Helvetica-Bold", 12)
     c.drawCentredString(width / 2, height - 20, "பசுமை பாரத மக்கள் கட்சி")
 
-    # Photo
-    if candidate["photo"]:
-        photo_path = candidate["photo"].replace("/uploads/", "uploads/")
-        c.drawImage(photo_path, 10, height - 90, 60, 70)
-
-    # Details
+    # Text
     c.setFont("Helvetica", 9)
-    c.drawString(80, height - 40, f"Name : {candidate['name']}")
-    c.drawString(80, height - 55, f"Mobile : {candidate['mobile']}")
-    c.drawString(80, height - 70, f"District : {candidate['district']}")
-    c.drawString(80, height - 85, f"Member ID : {candidate['membership_no']}")
+    c.drawString(20, height - 50, f"Name : {candidate['name']}")
+    c.drawString(20, height - 65, f"Mobile : {candidate['mobile']}")
+    c.drawString(20, height - 80, f"Member ID : {candidate['membership_no']}")
+    c.drawString(20, height - 95, f"District : {candidate['district']}")
+
+    # Photo
+    if candidate.get("photo_path") and os.path.exists(candidate["photo_path"]):
+        c.drawImage(candidate["photo_path"], width - 80, height - 110, 60, 80)
 
     # QR Code
     qr_data = f"""
@@ -196,25 +184,21 @@ Mobile: {candidate['mobile']}
 Member ID: {candidate['membership_no']}
 """
     qr = qrcode.make(qr_data)
-    qr_path = f"temp_qr_{candidate['mobile']}.png"
-    qr.save(qr_path)
+    qr_buf = io.BytesIO()
+    qr.save(qr_buf)
+    qr_buf.seek(0)
 
-    c.drawImage(qr_path, width - 70, 20, 50, 50)
-    os.remove(qr_path)
+    c.drawImage(ImageReader(qr_buf), width - 70, 20, 50, 50)
 
     c.showPage()
     c.save()
 
-    return f"/idcards/{candidate['mobile']}.pdf"
-@app.get("/admin/idcard/{mobile}")
-def download_idcard(mobile: str):
-    pdf_path = os.path.join(IDCARD_DIR, f"{mobile}.pdf")
+    buffer.seek(0)
 
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="ID card not found")
-
-    return FileResponse(
-        pdf_path,
+    return StreamingResponse(
+        buffer,
         media_type="application/pdf",
-        filename=f"{mobile}_ID_CARD.pdf"
+        headers={
+            "Content-Disposition": f"attachment; filename={mobile}_ID_CARD.pdf"
+        }
     )
