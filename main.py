@@ -151,43 +151,87 @@ def generate_membership_no():
 
 
 # ===================== DOWNLOAD ID CARD (REGENERATE PDF) =====================
+from reportlab.lib.pagesizes import A7, landscape
+from reportlab.lib.colors import HexColor
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+import qrcode, io, os
+
 @app.get("/admin/idcard/{mobile}")
 def download_idcard(mobile: str):
-    candidate = candidates_collection.find_one({"mobile": mobile})
 
-    if not candidate:
-        raise HTTPException(status_code=404, detail="Candidate not found")
+    cnd = candidates_collection.find_one({"mobile": mobile})
+    if not cnd:
+        raise HTTPException(status_code=404, detail="ID card not found")
 
-    member_id = candidate.get("membership_no", "PBM-NOT-ASSIGNED")
+    member_id = cnd.get("membership_no", "PBM-XXXX")
 
     buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A6)
-    width, height = A6
+    c = canvas.Canvas(buffer, pagesize=landscape(A7))
+    width, height = landscape(A7)
+
+    # ================= FRONT SIDE =================
+    # Watermark Logo
+    logo = "assets/party_logo.png"
+    if os.path.exists(logo):
+        c.saveState()
+        c.setFillAlpha(0.08)
+        c.drawImage(logo, width/2 - 20*mm, height/2 - 20*mm, 40*mm, 40*mm)
+        c.restoreState()
 
     # Header
-    c.setFont("Helvetica-Bold", 12)
-    c.drawCentredString(width / 2, height - 20, "பசுமை பாரத மக்கள் கட்சி")
-
-    # Details
-    c.setFont("Helvetica", 9)
-    c.drawString(20, height - 50, f"Name : {candidate.get('name','')}")
-    c.drawString(20, height - 65, f"Mobile : {candidate.get('mobile','')}")
-    c.drawString(20, height - 80, f"Member ID : {member_id}")
-    c.drawString(20, height - 95, f"District : {candidate.get('district','')}")
+    c.setFillColor(HexColor("#0F7A3E"))
+    c.rect(0, height - 14*mm, width, 14*mm, fill=1)
+    c.setFillColor(HexColor("#FFFFFF"))
+    c.setFont("Helvetica-Bold", 9)
+    c.drawCentredString(width/2, height - 10*mm, "பசுமை பாரத மக்கள் கட்சி")
+    c.setFont("Helvetica", 6)
+    c.drawCentredString(width/2, height - 14.5*mm, "PASUMAI BHARAT PEOPLE'S PARTY")
 
     # Photo
-    photo_path = candidate.get("photo_path")
-    if photo_path and os.path.exists(photo_path):
-        c.drawImage(photo_path, width - 80, height - 110, 60, 80)
+    if cnd.get("photo_path") and os.path.exists(cnd["photo_path"]):
+        c.drawImage(cnd["photo_path"], 5*mm, height-42*mm, 22*mm, 28*mm)
 
-    # QR
-    qr_data = f"{member_id} | {candidate.get('mobile','')}"
-    qr = qrcode.make(qr_data)
+    # Details (Bilingual)
+    c.setFillColor(HexColor("#000"))
+    c.setFont("Helvetica", 6)
+    c.drawString(32*mm, height-24*mm, f"பெயர் / Name : {cnd['name']}")
+    c.drawString(32*mm, height-32*mm, f"மொபைல் / Mobile : {cnd['mobile']}")
+    c.drawString(32*mm, height-40*mm, f"உறுப்பினர் எண் / ID : {member_id}")
+
+    # QR Code
+    verify_url = f"https://yourdomain.com/verify/{member_id}"
+    qr = qrcode.make(verify_url)
     qr_buf = io.BytesIO()
     qr.save(qr_buf)
     qr_buf.seek(0)
 
-    c.drawImage(ImageReader(qr_buf), width - 70, 20, 50, 50)
+    c.drawImage(ImageReader(qr_buf), width-25*mm, 5*mm, 20*mm, 20*mm)
+
+    c.showPage()
+
+    # ================= BACK SIDE =================
+    # Watermark
+    if os.path.exists(logo):
+        c.saveState()
+        c.setFillAlpha(0.05)
+        c.drawImage(logo, width/2 - 25*mm, height/2 - 25*mm, 50*mm, 50*mm)
+        c.restoreState()
+
+    # Text
+    c.setFont("Helvetica", 6)
+    c.setFillColor(HexColor("#000"))
+    c.drawCentredString(width/2, height-15*mm, "உறுப்பினர் விதிமுறைகள்")
+    c.drawCentredString(width/2, height-22*mm, "This card is the property of PBM Party")
+    c.drawCentredString(width/2, height-30*mm, "If found, please return to party office")
+
+    # Signature
+    c.line(10*mm, 15*mm, 40*mm, 15*mm)
+    c.drawString(10*mm, 10*mm, "Authorized Signature")
+
+    # Seal
+    c.circle(width-20*mm, 15*mm, 8*mm)
+    c.drawCentredString(width-20*mm, 10*mm, "OFFICIAL SEAL")
 
     c.showPage()
     c.save()
@@ -197,20 +241,20 @@ def download_idcard(mobile: str):
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={
-            "Content-Disposition": f"attachment; filename={mobile}_ID_CARD.pdf"
-        }
+        headers={"Content-Disposition": f"attachment; filename={mobile}_ID_CARD.pdf"}
     )
-@app.post("/admin/fix-membership")
-def fix_membership_numbers():
-    users = candidates_collection.find({"membership_no": {"$exists": False}})
-    count = candidates_collection.count_documents({})
+@app.get("/verify/{member_id}")
+def verify_member(member_id: str):
+    member = candidates_collection.find_one({"membership_no": member_id}, {"_id": 0})
+    if not member:
+        raise HTTPException(status_code=404, detail="Invalid Member")
 
-    for i, user in enumerate(users, start=1):
-        membership_no = f"PBM-{datetime.now().year}-{count + i:06d}"
-        candidates_collection.update_one(
-            {"_id": user["_id"]},
-            {"$set": {"membership_no": membership_no}}
-        )
+    return {
+        "status": "Valid Member",
+        "name": member["name"],
+        "mobile": member["mobile"],
+        "district": member["district"],
+        "membership_no": member["membership_no"]
+    }
 
-    return {"message": "Membership numbers updated"}
+
