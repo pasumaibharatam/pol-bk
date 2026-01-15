@@ -411,5 +411,24 @@ def verify_member(mobile: str):
         "district": candidate["district"],
         "membership_no": candidate["membership_no"]
     }
+@app.get("/district-secretaries")
+def get_district_secretaries():
+    return [
+        {
+            "name": "திரு. மு. செந்தில்",
+            "district": "சென்னை",
+            "photo": "https://via.placeholder.com/200"
+        },
+        {
+            "name": "திரு. க. ரமேஷ்",
+            "district": "மதுரை",
+            "photo": "https://via.placeholder.com/200"
+        },
+        {
+            "name": "திருமதி. சு. லதா",
+            "district": "கோயம்புத்தூர்",
+            "photo": "https://via.placeholder.com/200"
+        }
+    ]
 
 
