@@ -158,6 +158,8 @@ def download_idcard(mobile: str):
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
+    member_id = candidate.get("membership_no", "PBM-NOT-ASSIGNED")
+
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A6)
     width, height = A6
@@ -166,23 +168,20 @@ def download_idcard(mobile: str):
     c.setFont("Helvetica-Bold", 12)
     c.drawCentredString(width / 2, height - 20, "பசுமை பாரத மக்கள் கட்சி")
 
-    # Text
+    # Details
     c.setFont("Helvetica", 9)
-    c.drawString(20, height - 50, f"Name : {candidate['name']}")
-    c.drawString(20, height - 65, f"Mobile : {candidate['mobile']}")
-    c.drawString(20, height - 80, f"Member ID : {candidate['membership_no']}")
-    c.drawString(20, height - 95, f"District : {candidate['district']}")
+    c.drawString(20, height - 50, f"Name : {candidate.get('name','')}")
+    c.drawString(20, height - 65, f"Mobile : {candidate.get('mobile','')}")
+    c.drawString(20, height - 80, f"Member ID : {member_id}")
+    c.drawString(20, height - 95, f"District : {candidate.get('district','')}")
 
     # Photo
-    if candidate.get("photo_path") and os.path.exists(candidate["photo_path"]):
-        c.drawImage(candidate["photo_path"], width - 80, height - 110, 60, 80)
+    photo_path = candidate.get("photo_path")
+    if photo_path and os.path.exists(photo_path):
+        c.drawImage(photo_path, width - 80, height - 110, 60, 80)
 
-    # QR Code
-    qr_data = f"""
-Name: {candidate['name']}
-Mobile: {candidate['mobile']}
-Member ID: {candidate['membership_no']}
-"""
+    # QR
+    qr_data = f"{member_id} | {candidate.get('mobile','')}"
     qr = qrcode.make(qr_data)
     qr_buf = io.BytesIO()
     qr.save(qr_buf)
@@ -202,3 +201,16 @@ Member ID: {candidate['membership_no']}
             "Content-Disposition": f"attachment; filename={mobile}_ID_CARD.pdf"
         }
     )
+@app.post("/admin/fix-membership")
+def fix_membership_numbers():
+    users = candidates_collection.find({"membership_no": {"$exists": False}})
+    count = candidates_collection.count_documents({})
+
+    for i, user in enumerate(users, start=1):
+        membership_no = f"PBM-{datetime.now().year}-{count + i:06d}"
+        candidates_collection.update_one(
+            {"_id": user["_id"]},
+            {"$set": {"membership_no": membership_no}}
+        )
+
+    return {"message": "Membership numbers updated"}
