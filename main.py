@@ -257,99 +257,136 @@ def generate_membership_no():
 #         "membership_no": member["membership_no"]
 #     }
 from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
-import qrcode, io, os
 from reportlab.lib.units import mm
-from reportlab.lib.colors import HexColor
-from reportlab.lib.colors import HexColor, BLACK, WHITE, GREEN
+from reportlab.lib.colors import HexColor, black, white
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.utils import ImageReader
+import qrcode
+import io
+import os
 
-CARD_WIDTH = 90 * mm
-CARD_HEIGHT = 55 * mm
+CARD_WIDTH = 105 * mm
+CARD_HEIGHT = 74 * mm
+PARTY_GREEN = HexColor("#0B6623")
+TEXT_WHITE = white
+LINE_BLACK = black
+pdfmetrics.registerFont(
+    TTFont("Tamil", "fonts/NotoSansTamil-Regular.ttf")
+)
+@app.get("/admin/idcard/{mobile}")
+def download_idcard(mobile: str):
+    candidate = candidates_collection.find_one({"mobile": mobile})
 
-def generate_idcard_pdf(candidate):
-    pdf_path = f"idcards/{candidate['mobile']}.pdf"
-    c = canvas.Canvas(pdf_path, pagesize=(CARD_WIDTH, CARD_HEIGHT))
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    member_id = candidate.get("membership_no", f"PB-{mobile}")
+
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=(CARD_WIDTH, CARD_HEIGHT))
 
     # ================= FRONT SIDE =================
-    c.setFillColor(GREEN)
-    c.rect(0, 0, CARD_WIDTH, CARD_HEIGHT, fill=1)
+    c.setFillColor(PARTY_GREEN)
+    c.rect(0, 0, CARD_WIDTH, CARD_HEIGHT, fill=1, stroke=0)
 
     # Border
-    c.setStrokeColor(BLACK)
+    c.setStrokeColor(LINE_BLACK)
     c.setLineWidth(1)
-    c.rect(2, 2, CARD_WIDTH-4, CARD_HEIGHT-4, fill=0)
+    c.rect(2 * mm, 2 * mm, CARD_WIDTH - 4 * mm, CARD_HEIGHT - 4 * mm)
 
-    # Party Name
-    c.setFillColor(WHITE)
+    # Party Name (Tamil)
+    c.setFillColor(TEXT_WHITE)
+    c.setFont("Tamil", 14)
+    c.drawCentredString(
+        CARD_WIDTH / 2,
+        CARD_HEIGHT - 12 * mm,
+        "பசுமை பாரத மக்கள் கட்சி"
+    )
+
+    # English subtitle
     c.setFont("Helvetica-Bold", 9)
-    c.drawCentredString(CARD_WIDTH/2, CARD_HEIGHT-10,
-        "பசுமை பாரத மக்கள் கட்சி")
-    c.setFont("Helvetica", 7)
-    c.drawCentredString(CARD_WIDTH/2, CARD_HEIGHT-18,
-        "PASUMAI BHARAT PEOPLE'S PARTY")
-
-    # Divider
-    c.setStrokeColor(BLACK)
-    c.line(5, CARD_HEIGHT-22, CARD_WIDTH-5, CARD_HEIGHT-22)
+    c.drawCentredString(
+        CARD_WIDTH / 2,
+        CARD_HEIGHT - 18 * mm,
+        "PASUMAI BHARATAM"
+    )
 
     # Photo
     if candidate.get("photo"):
         photo_path = candidate["photo"].replace("/uploads/", "uploads/")
         if os.path.exists(photo_path):
-            c.drawImage(photo_path, 5, CARD_HEIGHT-50, 20, 25)
+            c.drawImage(
+                photo_path,
+                6 * mm,
+                CARD_HEIGHT - 48 * mm,
+                28 * mm,
+                34 * mm,
+                mask="auto"
+            )
 
     # Details
-    c.setFont("Helvetica", 7)
-    y = CARD_HEIGHT-30
-    c.drawString(28, y, f"Name : {candidate['name']}")
-    c.drawString(28, y-8, f"Mobile : {candidate['mobile']}")
-    c.drawString(28, y-16, f"District : {candidate['district']}")
-    c.drawString(28, y-24, f"Member ID : {candidate['membership_no']}")
+    c.setFont("Helvetica", 8)
+    c.drawString(38 * mm, CARD_HEIGHT - 30 * mm, f"Name : {candidate['name']}")
+    c.drawString(38 * mm, CARD_HEIGHT - 38 * mm, f"District : {candidate['district']}")
+    c.drawString(38 * mm, CARD_HEIGHT - 46 * mm, f"Mobile : {candidate['mobile']}")
 
-    # Watermark Logo (optional)
-    if os.path.exists("party_logo.png"):
-        c.saveState()
-        c.setFillAlpha(0.15)
-        c.drawImage("party_logo.png", 30, 10, 30, 30)
-        c.restoreState()
+    # Member ID
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(38 * mm, CARD_HEIGHT - 54 * mm, f"ID : {member_id}")
 
     c.showPage()
 
     # ================= BACK SIDE =================
-    c.setFillColor(LIGHT_GREEN)
-    c.rect(0, 0, CARD_WIDTH, CARD_HEIGHT, fill=1)
+    c.setFillColor(PARTY_GREEN)
+    c.rect(0, 0, CARD_WIDTH, CARD_HEIGHT, fill=1, stroke=0)
 
-    c.setStrokeColor(BLACK)
-    c.rect(2, 2, CARD_WIDTH-4, CARD_HEIGHT-4, fill=0)
+    c.setStrokeColor(LINE_BLACK)
+    c.rect(2 * mm, 2 * mm, CARD_WIDTH - 4 * mm, CARD_HEIGHT - 4 * mm)
 
-    c.setFillColor(BLACK)
-    c.setFont("Helvetica-Bold", 8)
-    c.drawCentredString(CARD_WIDTH/2, CARD_HEIGHT-10, "Member Verification")
-
-    # QR Code (verification URL)
-    verify_url = f"https://pol-ui.onrender.com/verify/{candidate['mobile']}"
+    # QR Code → verification page
+    verify_url = f"https://pol-ui.onrender.com/verify/{mobile}"
     qr = qrcode.make(verify_url)
     qr_buf = io.BytesIO()
     qr.save(qr_buf)
     qr_buf.seek(0)
 
-    c.drawImage(ImageReader(qr_buf), CARD_WIDTH/2-15, CARD_HEIGHT/2-15, 30, 30)
+    c.drawImage(
+        ImageReader(qr_buf),
+        CARD_WIDTH / 2 - 15 * mm,
+        CARD_HEIGHT - 45 * mm,
+        30 * mm,
+        30 * mm
+    )
 
-    c.setFont("Helvetica", 6)
-    c.drawCentredString(CARD_WIDTH/2, CARD_HEIGHT/2-20,
-        "Scan to verify membership")
+    # Text
+    c.setFillColor(TEXT_WHITE)
+    c.setFont("Helvetica", 8)
+    c.drawCentredString(
+        CARD_WIDTH / 2,
+        22 * mm,
+        "Scan QR for verification"
+    )
 
-    # Signature area
-    c.line(10, 15, 40, 15)
-    c.drawString(12, 7, "Authorized Sign")
+    # Signature / Seal
+    c.setLineWidth(0.8)
+    c.line(20 * mm, 12 * mm, 50 * mm, 12 * mm)
+    c.drawString(22 * mm, 8 * mm, "Authorized Signature")
 
-    # Seal area
-    c.circle(CARD_WIDTH-20, 15, 8)
+    c.drawString(60 * mm, 8 * mm, "Party Seal")
 
     c.showPage()
     c.save()
 
-    return f"/idcards/{candidate['mobile']}.pdf"
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename={mobile}_ID_CARD.pdf"
+        }
+    )
 @app.get("/verify/{mobile}")
 def verify_member(mobile: str):
     candidate = candidates_collection.find_one({"mobile": mobile})
