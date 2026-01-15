@@ -271,9 +271,7 @@ CARD_HEIGHT = 74 * mm
 PARTY_GREEN = HexColor("#0B6623")
 TEXT_WHITE = white
 LINE_BLACK = black
-pdfmetrics.registerFont(
-    TTFont("Tamil", "fonts/NotoSansTamil-Regular.ttf")
-)
+
 @app.get("/admin/idcard/{mobile}")
 def download_idcard(mobile: str):
     candidate = candidates_collection.find_one({"mobile": mobile})

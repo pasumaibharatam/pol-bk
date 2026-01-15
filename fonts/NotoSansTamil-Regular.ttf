@@ -1,0 +1,3 @@
+pdfmetrics.registerFont(
+    TTFont("Tamil", "fonts/NotoSansTamil-Regular.ttf")
+)
