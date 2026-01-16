@@ -153,10 +153,13 @@ def generate_membership_no():
 
 # ===================== DOWNLOAD ID CARD (REGENERATE PDF) =====================
 from reportlab.lib.pagesizes import A7, landscape
-from reportlab.lib.colors import HexColor
+from reportlab.lib.colors import HexColor, white, black
 from reportlab.lib.units import mm
-from reportlab.lib.utils import ImageReader
-import qrcode, io, os
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+from fastapi.responses import StreamingResponse
+import io, os
 
 @app.get("/admin/idcard/{mobile}")
 def download_idcard(mobile: str):
@@ -171,68 +174,81 @@ def download_idcard(mobile: str):
     c = canvas.Canvas(buffer, pagesize=landscape(A7))
     width, height = landscape(A7)
 
-    # ================= FRONT SIDE =================
-    # Watermark Logo
-    logo = "assets/party_logo.png"
-    if os.path.exists(logo):
-        c.saveState()
-        c.setFillAlpha(0.08)
-        c.drawImage(logo, width/2 - 20*mm, height/2 - 20*mm, 40*mm, 40*mm)
-        c.restoreState()
+    # Tamil font
+    pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
 
-    # Header
-    c.setFillColor(HexColor("#0F7A3E"))
-    c.rect(0, height - 14*mm, width, 14*mm, fill=1)
-    c.setFillColor(HexColor("#FFFFFF"))
-    c.setFont("Helvetica-Bold", 9)
-    c.drawCentredString(width/2, height - 10*mm, "பசுமை பாரத மக்கள் கட்சி")
-    c.setFont("Helvetica", 6)
-    c.drawCentredString(width/2, height - 14.5*mm, "PASUMAI BHARAT PEOPLE'S PARTY")
+    # Party colours
+    party_dark = HexColor("#0F7A3E")
+    party_light = HexColor("#5FB48C")
 
-    # Photo
+    # ================= FRONT =================
+
+    # Background
+    c.setFillColor(white)
+    c.rect(0, 0, width, height, fill=1)
+
+    # Right curved wave
+    c.setFillColor(party_dark)
+    c.roundRect(width - 30*mm, -10*mm, 40*mm, height + 20*mm, 40, fill=1)
+
+    c.setFillColor(party_light)
+    c.roundRect(width - 38*mm, -10*mm, 30*mm, height + 20*mm, 40, fill=1)
+
+    # Party Name (Tamil)
+    c.setFillColor(party_dark)
+    c.setFont("HeiseiMin-W3", 10)
+    c.drawString(8*mm, height - 12*mm, "பசுமை பாரத மக்கள் கட்சி")
+
+    # Member Name (BIG)
+    c.setFont("Helvetica-Bold", 12)
+    c.setFillColor(black)
+    c.drawString(8*mm, height - 26*mm, cnd["name"].upper())
+
+    # Divider
+    c.setLineWidth(0.5)
+    c.line(8*mm, height - 29*mm, width - 45*mm, height - 29*mm)
+
+    # Details
+    c.setFont("Helvetica", 7)
+    c.drawString(8*mm, height - 38*mm, f"📞 {cnd['mobile']}")
+    c.drawString(8*mm, height - 46*mm, f"📍 {cnd['district']}")
+    c.drawString(8*mm, height - 54*mm, f"ID : {member_id}")
+
+    # Photo (optional)
     if cnd.get("photo_path") and os.path.exists(cnd["photo_path"]):
-        c.drawImage(cnd["photo_path"], 5*mm, height-42*mm, 22*mm, 28*mm)
-
-    # Details (Bilingual)
-    c.setFillColor(HexColor("#000"))
-    c.setFont("Helvetica", 6)
-    c.drawString(32*mm, height-24*mm, f"பெயர் / Name : {cnd['name']}")
-    c.drawString(32*mm, height-32*mm, f"மொபைல் / Mobile : {cnd['mobile']}")
-    c.drawString(32*mm, height-40*mm, f"உறுப்பினர் எண் / ID : {member_id}")
-
-    # QR Code
-    verify_url = f"https://yourdomain.com/verify/{member_id}"
-    qr = qrcode.make(verify_url)
-    qr_buf = io.BytesIO()
-    qr.save(qr_buf)
-    qr_buf.seek(0)
-
-    c.drawImage(ImageReader(qr_buf), width-25*mm, 5*mm, 20*mm, 20*mm)
+        c.drawImage(
+            cnd["photo_path"],
+            width - 28*mm,
+            height - 40*mm,
+            20*mm,
+            26*mm,
+            mask="auto"
+        )
 
     c.showPage()
 
-    # ================= BACK SIDE =================
-    # Watermark
-    if os.path.exists(logo):
-        c.saveState()
-        c.setFillAlpha(0.05)
-        c.drawImage(logo, width/2 - 25*mm, height/2 - 25*mm, 50*mm, 50*mm)
-        c.restoreState()
+    # ================= BACK =================
 
-    # Text
+    # Background
+    c.setFillColor(white)
+    c.rect(0, 0, width, height, fill=1)
+
+    # Rules
+    c.setFillColor(black)
+    c.setFont("HeiseiMin-W3", 8)
+    c.drawCentredString(width/2, height - 20*mm, "உறுப்பினர் விதிமுறைகள்")
+
     c.setFont("Helvetica", 6)
-    c.setFillColor(HexColor("#000"))
-    c.drawCentredString(width/2, height-15*mm, "உறுப்பினர் விதிமுறைகள்")
-    c.drawCentredString(width/2, height-22*mm, "This card is the property of PBM Party")
-    c.drawCentredString(width/2, height-30*mm, "If found, please return to party office")
+    c.drawCentredString(width/2, height - 30*mm, "This card is for official identification only")
+    c.drawCentredString(width/2, height - 38*mm, "If found, please return to party office")
 
     # Signature
-    c.line(10*mm, 15*mm, 40*mm, 15*mm)
+    c.line(10*mm, 15*mm, 45*mm, 15*mm)
     c.drawString(10*mm, 10*mm, "Authorized Signature")
 
-    # Seal
-    c.circle(width-20*mm, 15*mm, 8*mm)
-    c.drawCentredString(width-20*mm, 10*mm, "OFFICIAL SEAL")
+    # Seal text
+    c.circle(width - 20*mm, 15*mm, 8*mm)
+    c.drawCentredString(width - 20*mm, 10*mm, "OFFICIAL")
 
     c.showPage()
     c.save()
@@ -242,8 +258,11 @@ def download_idcard(mobile: str):
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={mobile}_ID_CARD.pdf"}
+        headers={
+            "Content-Disposition": f"attachment; filename={mobile}_ID_CARD.pdf"
+        }
     )
+
 @app.get("/verify/{member_id}")
 def verify_member(member_id: str):
     member = candidates_collection.find_one({"membership_no": member_id}, {"_id": 0})
