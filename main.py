@@ -152,7 +152,6 @@ def get_all_candidates():
 # ===================== ID CARD PDF =====================
 @app.get("/admin/idcard/{mobile}")
 def generate_idcard(mobile: str):
-
     cnd = candidates_collection.find_one({"mobile": mobile})
     if not cnd:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -161,107 +160,79 @@ def generate_idcard(mobile: str):
     c = canvas.Canvas(buffer, pagesize=landscape(A7))
     width, height = landscape(A7)
 
-    # ================= FONT (Render SAFE) =================
-    pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
+    # Bars and background
+    bar_width = 10*mm
+    c.setFillColor(HexColor('#388E3C'))
+    c.rect(0, 0, bar_width, height, fill=1, stroke=0)
+    c.rect(width-bar_width, 0, bar_width, height, fill=1, stroke=0)
+    c.setFillColor(HexColor('#C8E6C9'))
+    c.rect(bar_width, 0, width-2*bar_width, height, fill=1, stroke=0)
 
-    # ================= PARTY COLORS =================
-    green_dark   = HexColor("#114D2B")
-    green_mid    = HexColor("#1E7F4F")
-    green_light  = HexColor("#1CF791")
-
-    # =====================================================
-    # ===================== FRONT SIDE ====================
-    # =====================================================
-
-    # White base
-    c.setFillColor(white)
-    c.rect(0, 0, width, height, fill=1)
-
-    # ---- CURVED WAVES (Right Side) ----
-    c.setFillColor(green_dark)
-    c.roundRect(width-28*mm, -12*mm, 45*mm, height+24*mm, 45, fill=1)
-
-    c.setFillColor(green_mid)
-    c.roundRect(width-36*mm, -12*mm, 35*mm, height+24*mm, 45, fill=1)
-
-    c.setFillColor(green_light)
-    c.roundRect(width-44*mm, -12*mm, 25*mm, height+24*mm, 45, fill=1)
-
-    # ---- PARTY NAME (TOP) ----
-    c.setFont("HeiseiMin-W3", 11)
-    c.setFillColor(green_dark)
-    c.drawString(10*mm, height-14*mm, "பசுமை பாரத மக்கள் கட்சி")
-
-    # ---- MEMBER NAME (BIG, CENTERED LEFT) ----
+    # Party Name
     c.setFont("Helvetica-Bold", 14)
-    c.setFillColor(black)
-    c.drawString(10*mm, height-32*mm, cnd["name"].upper())
+    c.setFillColor(HexColor('#1B5E20'))
+    c.drawCentredString(width/2, height-10*mm, "பசுமை பாரத மக்கள் கட்சி")
 
-    # Divider line
-    c.setLineWidth(0.8)
-    c.line(10*mm, height-35*mm, width-50*mm, height-35*mm)
+    # Photo placeholder
+    photo_radius = 15*mm
+    photo_center_x = bar_width + 20*mm
+    photo_center_y = height/2
+    c.setFillColor(HexColor('#FFFFFF'))
+    c.circle(photo_center_x, photo_center_y, photo_radius, fill=1)
+    c.setLineWidth(1)
+    c.setStrokeColor(HexColor('#1B5E20'))
+    c.circle(photo_center_x, photo_center_y, photo_radius, fill=0)
 
-    # ---- DETAILS ----
-    c.setFont("Helvetica", 7)
-    c.drawString(10*mm, height-45*mm, f"📞  {cnd['mobile']}")
-    c.drawString(10*mm, height-53*mm, f"📍  {cnd['district']}")
-    c.drawString(10*mm, height-61*mm, f"ID : {cnd['membership_no']}")
+    # Insert real photo if available
+    photo_path = cnd.get("photo")
+    if photo_path:
+        real_path = photo_path.lstrip("/")
+        if os.path.exists(real_path):
+            c.drawImage(
+                real_path,
+                photo_center_x - photo_radius,
+                photo_center_y - photo_radius,
+                2*photo_radius,
+                2*photo_radius,
+                mask='auto'
+            )
 
-    # ---- PHOTO (OPTIONAL) ----
-    if cnd.get("photo") and os.path.exists(cnd["photo"].lstrip("/")):
-        c.drawImage(
-            cnd["photo"].lstrip("/"),
-            width-30*mm,
-            height-42*mm,
-            22*mm,
-            28*mm,
-            mask="auto"
-        )
+    # Member info
+    c.setFont("Helvetica-Bold", 9)
+    c.setFillColor(HexColor('#000000'))
+    text_start_x = photo_center_x + photo_radius + 7*mm
+    text_start_y = photo_center_y + 15*mm
+    line_spacing = 10
+    c.drawString(text_start_x, text_start_y, cnd["name"].upper())
+    c.drawString(text_start_x, text_start_y - line_spacing, f"📞  {cnd['mobile']}")
+    c.drawString(text_start_x, text_start_y - 2*line_spacing, f"📍  {cnd['district']}")
+    c.drawString(text_start_x, text_start_y - 3*line_spacing, f"ID: {cnd['membership_no']}")
 
+    # Bottom line
+    c.setStrokeColor(HexColor('#1B5E20'))
+    c.setLineWidth(1)
+    c.line(bar_width, 5*mm, width-bar_width, 5*mm)
+
+    # Back page
     c.showPage()
-
-    # =====================================================
-    # ===================== BACK SIDE =====================
-    # =====================================================
-
-    c.setFillColor(white)
-    c.rect(0, 0, width, height, fill=1)
-
-    # Top green bar
-    c.setFillColor(green_dark)
-    c.rect(0, height-14*mm, width, 14*mm, fill=1)
-
-    c.setFont("HeiseiMin-W3", 9)
-    c.setFillColor(white)
-    c.drawCentredString(width/2, height-10*mm, "உறுப்பினர் விதிமுறைகள்")
-
-    # Rules text
+    c.setFillColor(HexColor('#388E3C'))
+    c.rect(0, 0, bar_width, height, fill=1, stroke=0)
+    c.rect(width-bar_width, 0, bar_width, height, fill=1, stroke=0)
+    c.setFillColor(HexColor('#E8F5E9'))
+    c.rect(bar_width, 0, width-2*bar_width, height, fill=1, stroke=0)
+    c.setFont("Helvetica-Bold", 10)
+    c.setFillColor(HexColor('#1B5E20'))
+    c.drawCentredString(width/2, height-15*mm, "சுற்றுச்சூழல் • சமத்துவம் • சமூக நீதி")
     c.setFont("Helvetica", 7)
-    c.setFillColor(black)
-    c.drawCentredString(width/2, height-32*mm, "This card is official identification")
-    c.drawCentredString(width/2, height-42*mm, "If found, return to party office")
+    c.drawCentredString(width/2, 5*mm, "Website: www.pasumaiparty.in | Contact: 9876598765") 
 
-    # Signature
-    c.line(12*mm, 18*mm, 48*mm, 18*mm)
-    c.setFont("Helvetica", 6)
-    c.drawString(12*mm, 12*mm, "Authorized Signature")
-
-    # Seal
-    c.circle(width-22*mm, 18*mm, 8*mm)
-    c.drawCentredString(width-22*mm, 12*mm, "OFFICIAL")
-
-    c.showPage()
+    # Save and return
     c.save()
     buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={
+        "Content-Disposition": f"inline; filename={cnd['membership_no']}.pdf"
+    })
 
-    return StreamingResponse(
-        buffer,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f"attachment; filename={mobile}_ID_CARD.pdf"
-        }
-    )
-    
     
 @app.get("/district-secretaries")
 def get_district_secretaries():
