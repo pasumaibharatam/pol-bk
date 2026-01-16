@@ -153,37 +153,76 @@ def get_all_candidates():
 
 # ===================== ID CARD PDF =====================
 
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from weasyprint import HTML
-from fastapi import Request
-import tempfile
-
-templates = Jinja2Templates(directory="templates")
-
 @app.get("/admin/idcard/{mobile}")
-def generate_idcard(mobile: str, request: Request):
+def generate_idcard(mobile: str):
     cnd = candidates_collection.find_one({"mobile": mobile})
     if not cnd:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    photo_url = f"https://political-backend-wvrc.onrender.com/{cnd['photo']}"
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=landscape(A7))
+    width, height = landscape(A7)
 
-    html = templates.get_template("idcard.html").render(
-        name=cnd["name"],
-        mobile=cnd["mobile"],
-        district=cnd["district"],
-        membership_no=cnd["membership_no"],
-        photo_url=photo_url,
-    )
+    bar_width = 10 * mm
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as pdf:
-        HTML(string=html, base_url=str(request.base_url)).write_pdf(pdf.name)
-        pdf.seek(0)
-        pdf_data = pdf.read()
+    # Background
+    c.setFillColor(HexColor('#1B5E20'))
+    c.rect(0, 0, bar_width, height, fill=1, stroke=0)
+    c.rect(width - bar_width, 0, bar_width, height, fill=1, stroke=0)
+
+    c.setFillColor(HexColor('#E8F5E9'))
+    c.rect(bar_width, 0, width - 2 * bar_width, height, fill=1, stroke=0)
+
+    # Party name
+    c.setFont("Helvetica-Bold", 12)
+    c.setFillColor(HexColor('#1B5E20'))
+    c.drawCentredString(width / 2, height - 10 * mm, "PASUMAI BHARAT MAKKAL KATCHI")
+
+    # Photo circle
+    photo_radius = 15 * mm
+    photo_x = bar_width + 20 * mm
+    photo_y = height / 2
+
+    c.setFillColor(white)
+    c.circle(photo_x, photo_y, photo_radius, fill=1)
+    c.setStrokeColor(HexColor('#1B5E20'))
+    c.circle(photo_x, photo_y, photo_radius, fill=0)
+    photo_path = cnd.get("photo")
+
+    if photo_path:
+        abs_photo_path = os.path.join(os.getcwd(), photo_path)
+
+    if os.path.exists(abs_photo_path):
+        c.drawImage(
+            abs_photo_path,
+            photo_x - photo_radius,
+            photo_y - photo_radius,
+            2 * photo_radius,
+            2 * photo_radius,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+    else:
+        print("PHOTO NOT FOUND:", abs_photo_path)
+
+
+
+    # Text
+    c.setFont("Helvetica-Bold", 9)
+    text_x = photo_x + photo_radius + 7 * mm
+    text_y = photo_y + 15 * mm
+    line_gap = 12
+
+    c.drawString(text_x, text_y, cnd["name"].upper())
+    c.drawString(text_x, text_y - line_gap, f"Mobile: {cnd['mobile']}")
+    c.drawString(text_x, text_y - 2 * line_gap, f"District: {cnd['district']}")
+    c.drawString(text_x, text_y - 3 * line_gap, f"ID: {cnd['membership_no']}")
+
+    c.save()
+    buffer.seek(0)
 
     return StreamingResponse(
-        io.BytesIO(pdf_data),
+        buffer,
         media_type="application/pdf",
         headers={"Content-Disposition": "inline; filename=idcard.pdf"},
     )
