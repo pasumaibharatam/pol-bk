@@ -17,6 +17,7 @@ from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 # ===================== APP =====================
 app = FastAPI()
 
+pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
 # ===================== CORS =====================
 app.add_middleware(
     CORSMiddleware,
@@ -186,16 +187,17 @@ def generate_idcard(mobile: str):
     # Insert real photo if available
     photo_path = cnd.get("photo")
     if photo_path:
-        real_path = photo_path.lstrip("/")
-        if os.path.exists(real_path):
-            c.drawImage(
-                real_path,
-                photo_center_x - photo_radius,
-                photo_center_y - photo_radius,
-                2*photo_radius,
-                2*photo_radius,
-                mask='auto'
-            )
+     real_path = os.path.join(os.getcwd(), photo_path.lstrip("/"))
+     if os.path.exists(real_path):
+        c.drawImage(
+            real_path,
+            photo_center_x - photo_radius,
+            photo_center_y - photo_radius,
+            2*photo_radius,
+            2*photo_radius,
+            mask='auto'
+        )
+
 
     # Member info
     c.setFont("Helvetica-Bold", 9)

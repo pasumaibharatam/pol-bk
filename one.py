@@ -1,4 +1,4 @@
-from main import candidates_collection, generate_id_card, IDCARD_DIR
+from main import candidates_collection
 import os
 
 def fix_old_candidates():
