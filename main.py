@@ -8,23 +8,26 @@ import os, io, shutil, urllib.parse
 
 # ===================== REPORTLAB =====================
 from reportlab.lib.pagesizes import A7, landscape
-from reportlab.lib.colors import HexColor, white, black
+from reportlab.lib.colors import HexColor, white
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
-from reportlab.pdfbase.ttfonts import TTFont
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 # ===================== APP =====================
 app = FastAPI()
 
 pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
-# pdfmetrics.registerFont(TTFont("NotoTamil", "fonts/NotoSansTamil-Regular.ttf"))
+
 # ===================== CORS =====================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://pol-ui.onrender.com"
+        "https://pasumaibharatam.onrender.com"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -34,8 +37,9 @@ app.add_middleware(
 # ===================== DIRECTORIES =====================
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # ===================== DATABASE =====================
 USERNAME = "pasumaibharatam_db_user"
@@ -47,11 +51,13 @@ MONGO_URL = f"mongodb+srv://{USERNAME}:{PASSWORD}@{CLUSTER}/?retryWrites=true&w=
 client = MongoClient(MONGO_URL)
 db = client["political_db"]
 candidates_collection = db["candidates"]
+
 # ===================== DISTRICTS =====================
 @app.get("/districts")
 def get_districts():
     districts = list(db.districts.find({}, {"_id": 0, "name": 1}))
     return [d["name"] for d in districts]
+
 # ===================== MEMBERSHIP NO =====================
 def generate_membership_no():
     count = candidates_collection.count_documents({})
@@ -79,23 +85,29 @@ async def register(
     aadhaar: str = Form(""),
     photo: UploadFile = File(None)
 ):
-    # ---------- Duplicate check ----------
     if candidates_collection.find_one({"mobile": mobile}):
         raise HTTPException(status_code=400, detail="Mobile number already registered")
+
     membership_no = generate_membership_no()
-    # ---------- Save Photo ----------
-    photo_path = ""
-    if photo:
-        photo_ext = os.path.splitext(photo.filename)[1]
+
+    # ---------- Save photo (ONLY filename in DB) ----------
+    photo_filename = None
+    
+    if photo and photo.filename:
+        _, photo_ext = os.path.splitext(photo.filename)   # <-- THIS LINE CREATES photo_ext
+    
+        # fallback if extension missing
+        if not photo_ext:
+            photo_ext = ".jpg"
+    
         photo_filename = f"{mobile}{photo_ext}"
         photo_path = os.path.join(UPLOAD_DIR, photo_filename)
-
+    
         with open(photo_path, "wb") as buffer:
             shutil.copyfileobj(photo.file, buffer)
 
-   
 
-    # ---------- Mongo Document ----------
+
     candidate_doc = {
         "membership_no": membership_no,
         "name": name,
@@ -115,34 +127,24 @@ async def register(
         "address": address,
         "voter_id": voter_id,
         "aadhaar": aadhaar,
-        "photo": f"/uploads/{photo_filename}" if photo else "",
-              
+        "photo": photo_filename,   # ✅ ONLY filename
     }
 
     result = candidates_collection.insert_one(candidate_doc)
-   
-    
+
     return {
         "message": "Registration successful",
         "membership_no": membership_no,
-        
         "id": str(result.inserted_id)
     }
 
-# ===================== ADMIN =====================
+# ===================== ADMIN LIST =====================
 @app.get("/admin")
 def get_all_candidates():
     candidates = list(
         candidates_collection.find(
             {},
-            {
-                "_id": 1,
-                "name": 1,
-                "mobile": 1,
-                "district": 1,
-                "gender": 1,
-                "age": 1,
-            }
+            {"_id": 1, "name": 1, "mobile": 1, "district": 1, "gender": 1, "age": 1}
         )
     )
 
@@ -152,7 +154,6 @@ def get_all_candidates():
     return candidates
 
 # ===================== ID CARD PDF =====================
-
 @app.get("/admin/idcard/{mobile}")
 def generate_idcard(mobile: str):
     cnd = candidates_collection.find_one({"mobile": mobile})
@@ -166,57 +167,60 @@ def generate_idcard(mobile: str):
     bar_width = 10 * mm
 
     # Background
-    c.setFillColor(HexColor('#1B5E20'))
+    c.setFillColor(HexColor("#1B5E20"))
     c.rect(0, 0, bar_width, height, fill=1, stroke=0)
     c.rect(width - bar_width, 0, bar_width, height, fill=1, stroke=0)
 
-    c.setFillColor(HexColor('#E8F5E9'))
+    c.setFillColor(HexColor("#E8F5E9"))
     c.rect(bar_width, 0, width - 2 * bar_width, height, fill=1, stroke=0)
 
     # Party name
     c.setFont("Helvetica-Bold", 12)
-    c.setFillColor(HexColor('#1B5E20'))
+    c.setFillColor(HexColor("#1B5E20"))
     c.drawCentredString(width / 2, height - 10 * mm, "PASUMAI BHARAT MAKKAL KATCHI")
 
-    # Photo circle
+    # Photo
     photo_radius = 15 * mm
     photo_x = bar_width + 20 * mm
     photo_y = height / 2
 
-    c.setFillColor(white)
-    c.circle(photo_x, photo_y, photo_radius, fill=1)
-    c.setStrokeColor(HexColor('#1B5E20'))
-    c.circle(photo_x, photo_y, photo_radius, fill=0)
-    photo_path = cnd.get("photo")
+    photo_filename = cnd.get("photo")
 
-    if photo_path:
-        abs_photo_path = os.path.join(os.getcwd(), photo_path)
+    if photo_filename:
+        abs_photo_path = os.path.join(UPLOAD_DIR, photo_filename)
 
-    if os.path.exists(abs_photo_path):
-        c.drawImage(
-            abs_photo_path,
-            photo_x - photo_radius,
-            photo_y - photo_radius,
-            2 * photo_radius,
-            2 * photo_radius,
-            preserveAspectRatio=True,
-            mask="auto",
-        )
+        print("PHOTO PATH:", abs_photo_path)
+
+        if os.path.exists(abs_photo_path):
+            c.drawImage(
+                abs_photo_path,
+                photo_x - photo_radius,
+                photo_y - photo_radius,
+                2 * photo_radius,
+                2 * photo_radius,
+                preserveAspectRatio=True,
+                mask="auto",
+            )
+        else:
+            print("❌ PHOTO NOT FOUND")
     else:
-        print("PHOTO NOT FOUND:", abs_photo_path)
+        print("❌ PHOTO FIELD EMPTY")
 
-
+    # draw border last
+    c.setStrokeColor(HexColor("#1B5E20"))
+    c.setLineWidth(1)
+    c.circle(photo_x, photo_y, photo_radius, fill=0)
 
     # Text
     c.setFont("Helvetica-Bold", 9)
-    text_x = photo_x + photo_radius + 7 * mm
-    text_y = photo_y + 15 * mm
-    line_gap = 12
+    tx = photo_x + photo_radius + 7 * mm
+    ty = photo_y + 15 * mm
+    gap = 12
 
-    c.drawString(text_x, text_y, cnd["name"].upper())
-    c.drawString(text_x, text_y - line_gap, f"Mobile: {cnd['mobile']}")
-    c.drawString(text_x, text_y - 2 * line_gap, f"District: {cnd['district']}")
-    c.drawString(text_x, text_y - 3 * line_gap, f"ID: {cnd['membership_no']}")
+    c.drawString(tx, ty, cnd["name"].upper())
+    c.drawString(tx, ty - gap, f"Mobile: {cnd['mobile']}")
+    c.drawString(tx, ty - 2 * gap, f"District: {cnd['district']}")
+    c.drawString(tx, ty - 3 * gap, f"ID: {cnd['membership_no']}")
 
     c.save()
     buffer.seek(0)
@@ -227,8 +231,7 @@ def generate_idcard(mobile: str):
         headers={"Content-Disposition": "inline; filename=idcard.pdf"},
     )
 
-
-    
+# ===================== DISTRICT SECRETARIES =====================
 @app.get("/district-secretaries")
 def get_district_secretaries():
     return [
