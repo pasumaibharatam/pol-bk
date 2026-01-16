@@ -55,44 +55,95 @@ def generate_membership_no():
 @app.post("/register")
 async def register(
     name: str = Form(...),
+    father_name: str = Form(""),
+    gender: str = Form(""),
+    dob: str = Form(""),
     age: int = Form(...),
     blood_group: str = Form(...),
     mobile: str = Form(...),
-    district: str = Form(...),
+    email: str = Form(""),
+    state: str = Form("Tamil Nadu"),
+    district: str = Form(""),
+    local_body: str = Form(""),
+    nagaram_type: str = Form(""),
+    constituency: str = Form(""),
+    ward: str = Form(""),
+    address: str = Form(""),
+    voter_id: str = Form(""),
+    aadhaar: str = Form(""),
     photo: UploadFile = File(None)
 ):
-    if candidates.find_one({"mobile": mobile}):
-        raise HTTPException(status_code=400, detail="Mobile already registered")
-
+    # ---------- Duplicate check ----------
+    if candidates_collection.find_one({"mobile": mobile}):
+        raise HTTPException(status_code=400, detail="Mobile number already registered")
+    membership_no = generate_membership_no()
+    # ---------- Save Photo ----------
     photo_path = ""
     if photo:
-        ext = os.path.splitext(photo.filename)[1]
-        filename = f"{mobile}{ext}"
-        photo_path = os.path.join(UPLOAD_DIR, filename)
+        photo_ext = os.path.splitext(photo.filename)[1]
+        photo_filename = f"{mobile}{photo_ext}"
+        photo_path = os.path.join(UPLOAD_DIR, photo_filename)
+
         with open(photo_path, "wb") as buffer:
             shutil.copyfileobj(photo.file, buffer)
 
-    doc = {
-        "membership_no": generate_membership_no(),
+   
+
+    # ---------- Mongo Document ----------
+    candidate_doc = {
+        "membership_no": membership_no,
         "name": name,
+        "father_name": father_name,
+        "gender": gender,
+        "dob": dob,
         "age": age,
         "blood_group": blood_group,
         "mobile": mobile,
+        "email": email,
+        "state": state,
         "district": district,
-        "photo_path": photo_path
+        "local_body": local_body,
+        "nagaram_type": nagaram_type,
+        "constituency": constituency,
+        "ward": ward,
+        "address": address,
+        "voter_id": voter_id,
+        "aadhaar": aadhaar,
+        "photo": f"/uploads/{photo_filename}" if photo else "",
+              
     }
 
-    candidates.insert_one(doc)
-
-    return {"message": "Registered successfully"}
+    result = candidates_collection.insert_one(candidate_doc)
+   
+    
+    return {
+        "message": "Registration successful",
+        "membership_no": membership_no,
+        
+        "id": str(result.inserted_id)
+    }
 
 # ===================== ADMIN =====================
 @app.get("/admin")
-def admin_list():
-    data = []
-    for c in candidates.find({}, {"_id": 0}):
-        data.append(c)
-    return data
+def get_all_candidates():
+    candidates = list(
+        candidates_collection.find(
+            {},
+            {
+                "_id": 1,
+                "name": 1,
+                "mobile": 1,
+                "district": 1,
+                "gender": 1,
+                "age": 1,
+            }
+        )
+    )
+
+    for c in candidates:
+        c["_id"] = str(c["_id"])
+
+    return candidates
 
 # ===================== ID CARD PDF =====================
 @app.get("/admin/idcard/{mobile}")
@@ -109,8 +160,8 @@ def generate_idcard(mobile: str):
     # Tamil Font (BUILT-IN – Render SAFE)
     pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
 
-    party_dark = HexColor("#0F7A3E")
-    party_light = HexColor("#5FB48C")
+    party_dark = HexColor("#114D2B")
+    party_light = HexColor("#1CF791")
 
     # ================= FRONT =================
     c.setFillColor(white)
@@ -183,3 +234,24 @@ def generate_idcard(mobile: str):
             "Content-Disposition": f"attachment; filename={mobile}_ID_CARD.pdf"
         }
     )
+    
+    
+    @app.get("/district-secretaries")
+def get_district_secretaries():
+    return [
+        {
+            "name": "திரு. மு. செந்தில்",
+            "district": "சென்னை",
+            "photo": "/assets/district_secretaries/dum.jpeg"
+        },
+        {
+            "name": "திரு. க. ரமேஷ்",
+            "district": "மதுரை",
+            "photo": "/assets/district_secretaries/dum.jpeg"
+        },
+        {
+            "name": "திருமதி. சு. லதா",
+            "district": "கோயம்புத்தூர்",
+            "photo": "/assets/district_secretaries/dum.jpeg"
+        }
+    ]
