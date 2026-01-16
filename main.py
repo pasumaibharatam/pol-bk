@@ -27,7 +27,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://pasumaibharatam.onrender.com"
+        "https://pol-ui.onrender.com"
     ],
     allow_credentials=True,
     allow_methods=["*"],
