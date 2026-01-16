@@ -6,7 +6,7 @@ import os
 import urllib.parse
 import shutil
 import io
-
+from fastapi.staticfiles import StaticFiles
 from reportlab.lib.pagesizes import A6
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 import qrcode
 # ===================== APP =====================
 app = FastAPI()
-
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 # ===================== CORS =====================
 app.add_middleware(
     CORSMiddleware,
