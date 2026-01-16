@@ -32,7 +32,7 @@ app.add_middleware(
 # ===================== DIRECTORIES =====================
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # ===================== DATABASE =====================
@@ -44,11 +44,15 @@ MONGO_URL = f"mongodb+srv://{USERNAME}:{PASSWORD}@{CLUSTER}/?retryWrites=true&w=
 
 client = MongoClient(MONGO_URL)
 db = client["political_db"]
-candidates = db["candidates"]
-
+candidates_collection = db["candidates"]
+# ===================== DISTRICTS =====================
+@app.get("/districts")
+def get_districts():
+    districts = list(db.districts.find({}, {"_id": 0, "name": 1}))
+    return [d["name"] for d in districts]
 # ===================== MEMBERSHIP NO =====================
 def generate_membership_no():
-    count = candidates.count_documents({})
+    count = candidates_collection.count_documents({})
     return f"PBM-{datetime.now().year}-{count + 1:06d}"
 
 # ===================== REGISTER =====================
@@ -149,7 +153,7 @@ def get_all_candidates():
 @app.get("/admin/idcard/{mobile}")
 def generate_idcard(mobile: str):
 
-    cnd = candidates.find_one({"mobile": mobile})
+    cnd = candidates_collection.find_one({"mobile": mobile})
     if not cnd:
         raise HTTPException(status_code=404, detail="Member not found")
 
