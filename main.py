@@ -236,7 +236,7 @@ def generate_idcard(mobile: str):
     )
     
     
-    @app.get("/district-secretaries")
+@app.get("/district-secretaries")
 def get_district_secretaries():
     return [
         {
