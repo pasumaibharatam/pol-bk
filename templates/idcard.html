@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+
+    .card {
+      width: 105mm;
+      height: 74mm;
+      display: flex;
+      background: #E8F5E9;
+    }
+
+    .bar {
+      width: 10mm;
+      background: #1B5E20;
+    }
+
+    .content {
+      flex: 1;
+      padding: 10px;
+      display: flex;
+    }
+
+    .photo-box {
+      width: 40mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .photo {
+      width: 30mm;
+      height: 30mm;
+      border-radius: 50%;
+      border: 2px solid #1B5E20;
+      object-fit: cover;
+    }
+
+    .info {
+      padding-left: 10px;
+      font-size: 10px;
+      color: #1B5E20;
+    }
+
+    .title {
+      font-weight: bold;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="bar"></div>
+
+    <div class="content">
+      <div class="photo-box">
+        <img src="{{ photo_url }}" class="photo">
+      </div>
+
+      <div class="info">
+        <div class="title">பசுமை பாரத மக்கள் கட்சி</div>
+        <div><b>Name:</b> {{ name }}</div>
+        <div><b>Mobile:</b> {{ mobile }}</div>
+        <div><b>District:</b> {{ district }}</div>
+        <div><b>ID:</b> {{ membership_no }}</div>
+      </div>
+    </div>
+
+    <div class="bar"></div>
+  </div>
+</body>
+</html>
