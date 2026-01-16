@@ -162,81 +162,64 @@ def generate_idcard(mobile: str):
     c = canvas.Canvas(buffer, pagesize=landscape(A7))
     width, height = landscape(A7)
 
-    # Bars and background
-    bar_width = 10*mm
+    bar_width = 10 * mm
+
+    # Background
     c.setFillColor(HexColor('#388E3C'))
     c.rect(0, 0, bar_width, height, fill=1, stroke=0)
-    c.rect(width-bar_width, 0, bar_width, height, fill=1, stroke=0)
-    c.setFillColor(HexColor('#C8E6C9'))
-    c.rect(bar_width, 0, width-2*bar_width, height, fill=1, stroke=0)
+    c.rect(width - bar_width, 0, bar_width, height, fill=1, stroke=0)
 
-    # Party Name
-    c.setFont("HeiseiMin-W3", 14)
+    c.setFillColor(HexColor('#E8F5E9'))
+    c.rect(bar_width, 0, width - 2 * bar_width, height, fill=1, stroke=0)
+
+    # Party name
+    c.setFont("Helvetica-Bold", 12)
     c.setFillColor(HexColor('#1B5E20'))
-    c.drawCentredString(width/2, height-10*mm, "பசுமை பாரத மக்கள் கட்சி")
+    c.drawCentredString(width / 2, height - 10 * mm, "PASUMAI BHARAT MAKKAL KATCHI")
 
-    # Photo
-    photo_radius = 15*mm
-    photo_center_x = bar_width + 20*mm
-    photo_center_y = height/2
-    c.setFillColor(HexColor('#FFFFFF'))
-    c.circle(photo_center_x, photo_center_y, photo_radius, fill=1)
-    c.setLineWidth(1)
+    # Photo circle
+    photo_radius = 15 * mm
+    photo_x = bar_width + 20 * mm
+    photo_y = height / 2
+
+    c.setFillColor(white)
+    c.circle(photo_x, photo_y, photo_radius, fill=1)
     c.setStrokeColor(HexColor('#1B5E20'))
-    c.circle(photo_center_x, photo_center_y, photo_radius, fill=0)
-    
-# Insert real photo
-    photo_path = cnd.get("photo")
-    if photo_path:
-        real_path = os.path.abspath(photo_path.lstrip("/"))
+    c.circle(photo_x, photo_y, photo_radius, fill=0)
+
+    if cnd.get("photo"):
+        real_path = os.path.abspath(cnd["photo"].lstrip("/"))
         if os.path.exists(real_path):
             c.drawImage(
                 real_path,
-                photo_center_x - photo_radius,
-                photo_center_y - photo_radius,
-                2*photo_radius,
-                2*photo_radius,
+                photo_x - photo_radius,
+                photo_y - photo_radius,
+                2 * photo_radius,
+                2 * photo_radius,
                 preserveAspectRatio=True,
-                mask='auto'
+                mask="auto",
             )
-        else:
-            print(f"Photo not found at {real_path}")
-    
-        # Member info
-        c.setFont("Helvetica-Bold", 9)
-        c.setFillColor(HexColor('#000000'))
-        text_start_x = photo_center_x + photo_radius + 7*mm
-        text_start_y = photo_center_y + 15*mm
-        line_spacing = 10
-        c.drawString(text_start_x, text_start_y, cnd["name"].upper())
-        c.drawString(text_start_x, text_start_y - line_spacing, f"📞  {cnd['mobile']}")
-        c.drawString(text_start_x, text_start_y - 2*line_spacing, f"📍  {cnd['district']}")
-        c.drawString(text_start_x, text_start_y - 3*line_spacing, f"ID: {cnd['membership_no']}")
-    
-        # Bottom line
-        c.setStrokeColor(HexColor('#1B5E20'))
-        c.setLineWidth(1)
-        c.line(bar_width, 5*mm, width-bar_width, 5*mm)
-    
-        # Back page
-        c.showPage()
-        c.setFillColor(HexColor('#388E3C'))
-        c.rect(0, 0, bar_width, height, fill=1, stroke=0)
-        c.rect(width-bar_width, 0, bar_width, height, fill=1, stroke=0)
-        c.setFillColor(HexColor('#E8F5E9'))
-        c.rect(bar_width, 0, width-2*bar_width, height, fill=1, stroke=0)
-        c.setFont("HeiseiMin-W3", 12)
-        c.setFillColor(HexColor('#1B5E20'))
-        c.drawCentredString(width/2, height-15*mm, "சுற்றுச்சூழல் • சமத்துவம் • சமூக நீதி")
-        c.setFont("Helvetica", 7)
-        c.drawCentredString(width/2, 5*mm, "Website: www.pasumaiparty.in | Contact: 9876598765") 
-    
-        # Save and return
-        c.save()
-        buffer.seek(0)
-        return StreamingResponse(buffer, media_type="application/pdf", headers={
-            "Content-Disposition": f"inline; filename={cnd['membership_no']}.pdf"
-        })
+
+    # Text
+    c.setFont("Helvetica-Bold", 9)
+    text_x = photo_x + photo_radius + 7 * mm
+    text_y = photo_y + 15 * mm
+    line_gap = 12
+
+    c.drawString(text_x, text_y, cnd["name"].upper())
+    c.drawString(text_x, text_y - line_gap, f"Mobile: {cnd['mobile']}")
+    c.drawString(text_x, text_y - 2 * line_gap, f"District: {cnd['district']}")
+    c.drawString(text_x, text_y - 3 * line_gap, f"ID: {cnd['membership_no']}")
+
+    c.save()
+    buffer.seek(0)
+
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline; filename=idcard.pdf"},
+    )
+
 
     
 @app.get("/district-secretaries")
