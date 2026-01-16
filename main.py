@@ -157,74 +157,97 @@ def generate_idcard(mobile: str):
     c = canvas.Canvas(buffer, pagesize=landscape(A7))
     width, height = landscape(A7)
 
-    # Tamil Font (BUILT-IN – Render SAFE)
+    # ================= FONT (Render SAFE) =================
     pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
 
-    party_dark = HexColor("#114D2B")
-    party_light = HexColor("#1CF791")
+    # ================= PARTY COLORS =================
+    green_dark   = HexColor("#114D2B")
+    green_mid    = HexColor("#1E7F4F")
+    green_light  = HexColor("#1CF791")
 
-    # ================= FRONT =================
+    # =====================================================
+    # ===================== FRONT SIDE ====================
+    # =====================================================
+
+    # White base
     c.setFillColor(white)
     c.rect(0, 0, width, height, fill=1)
 
-    # Curved design
-    c.setFillColor(party_dark)
-    c.roundRect(width - 30*mm, -10*mm, 40*mm, height + 20*mm, 40, fill=1)
+    # ---- CURVED WAVES (Right Side) ----
+    c.setFillColor(green_dark)
+    c.roundRect(width-28*mm, -12*mm, 45*mm, height+24*mm, 45, fill=1)
 
-    c.setFillColor(party_light)
-    c.roundRect(width - 38*mm, -10*mm, 30*mm, height + 20*mm, 40, fill=1)
+    c.setFillColor(green_mid)
+    c.roundRect(width-36*mm, -12*mm, 35*mm, height+24*mm, 45, fill=1)
 
-    # Party Name (Tamil)
-    c.setFont("HeiseiMin-W3", 10)
-    c.setFillColor(party_dark)
-    c.drawString(8*mm, height - 12*mm, "பசுமை பாரத மக்கள் கட்சி")
+    c.setFillColor(green_light)
+    c.roundRect(width-44*mm, -12*mm, 25*mm, height+24*mm, 45, fill=1)
 
-    # Name
-    c.setFont("Helvetica-Bold", 12)
+    # ---- PARTY NAME (TOP) ----
+    c.setFont("HeiseiMin-W3", 11)
+    c.setFillColor(green_dark)
+    c.drawString(10*mm, height-14*mm, "பசுமை பாரத மக்கள் கட்சி")
+
+    # ---- MEMBER NAME (BIG, CENTERED LEFT) ----
+    c.setFont("Helvetica-Bold", 14)
     c.setFillColor(black)
-    c.drawString(8*mm, height - 26*mm, cnd["name"].upper())
+    c.drawString(10*mm, height-32*mm, cnd["name"].upper())
 
-    c.line(8*mm, height - 29*mm, width - 45*mm, height - 29*mm)
+    # Divider line
+    c.setLineWidth(0.8)
+    c.line(10*mm, height-35*mm, width-50*mm, height-35*mm)
 
+    # ---- DETAILS ----
     c.setFont("Helvetica", 7)
-    c.drawString(8*mm, height - 38*mm, f"📞 {cnd['mobile']}")
-    c.drawString(8*mm, height - 46*mm, f"📍 {cnd['district']}")
-    c.drawString(8*mm, height - 54*mm, f"ID : {cnd['membership_no']}")
+    c.drawString(10*mm, height-45*mm, f"📞  {cnd['mobile']}")
+    c.drawString(10*mm, height-53*mm, f"📍  {cnd['district']}")
+    c.drawString(10*mm, height-61*mm, f"ID : {cnd['membership_no']}")
 
-    # Photo
-    if cnd.get("photo_path") and os.path.exists(cnd["photo_path"]):
+    # ---- PHOTO (OPTIONAL) ----
+    if cnd.get("photo") and os.path.exists(cnd["photo"].lstrip("/")):
         c.drawImage(
-            cnd["photo_path"],
-            width - 28*mm,
-            height - 40*mm,
-            20*mm,
-            26*mm,
+            cnd["photo"].lstrip("/"),
+            width-30*mm,
+            height-42*mm,
+            22*mm,
+            28*mm,
             mask="auto"
         )
 
     c.showPage()
 
-    # ================= BACK =================
+    # =====================================================
+    # ===================== BACK SIDE =====================
+    # =====================================================
+
     c.setFillColor(white)
     c.rect(0, 0, width, height, fill=1)
 
-    c.setFont("HeiseiMin-W3", 8)
+    # Top green bar
+    c.setFillColor(green_dark)
+    c.rect(0, height-14*mm, width, 14*mm, fill=1)
+
+    c.setFont("HeiseiMin-W3", 9)
+    c.setFillColor(white)
+    c.drawCentredString(width/2, height-10*mm, "உறுப்பினர் விதிமுறைகள்")
+
+    # Rules text
+    c.setFont("Helvetica", 7)
     c.setFillColor(black)
-    c.drawCentredString(width/2, height - 20*mm, "உறுப்பினர் விதிமுறைகள்")
+    c.drawCentredString(width/2, height-32*mm, "This card is official identification")
+    c.drawCentredString(width/2, height-42*mm, "If found, return to party office")
 
+    # Signature
+    c.line(12*mm, 18*mm, 48*mm, 18*mm)
     c.setFont("Helvetica", 6)
-    c.drawCentredString(width/2, height - 32*mm, "Official identification only")
-    c.drawCentredString(width/2, height - 40*mm, "If found please return")
+    c.drawString(12*mm, 12*mm, "Authorized Signature")
 
-    c.line(10*mm, 15*mm, 45*mm, 15*mm)
-    c.drawString(10*mm, 10*mm, "Authorized Sign")
-
-    c.circle(width - 20*mm, 15*mm, 8*mm)
-    c.drawCentredString(width - 20*mm, 10*mm, "OFFICIAL")
+    # Seal
+    c.circle(width-22*mm, 18*mm, 8*mm)
+    c.drawCentredString(width-22*mm, 12*mm, "OFFICIAL")
 
     c.showPage()
     c.save()
-
     buffer.seek(0)
 
     return StreamingResponse(
