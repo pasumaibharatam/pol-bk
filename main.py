@@ -264,3 +264,67 @@ def create_access_token(data: dict):
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+from fastapi import APIRouter, HTTPException, Form
+
+router = APIRouter()
+
+@router.post("/admin/login")
+def admin_login(username: str = Form(...), password: str = Form(...)):
+    admin = db.admins.find_one({"username": username, "active": True})
+    if not admin or not verify_password(password, admin["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token({
+        "sub": admin["username"],
+        "role": admin["role"]
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer"
+    }
+from fastapi import Depends, Header
+
+def get_current_admin(authorization: str = Header(...)):
+    try:
+        token = authorization.split(" ")[1]
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        admin = db.admins.find_one({"username": payload["sub"], "active": True})
+        if not admin:
+            raise Exception()
+        return admin
+    except:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+@app.get("/admin/dashboard")
+def admin_dashboard(admin=Depends(get_current_admin)):
+    return {"message": f"Welcome {admin['username']}"}
+@router.post("/admin/change-password")
+def change_password(
+    old_password: str = Form(...),
+    new_password: str = Form(...),
+    admin=Depends(get_current_admin)
+):
+    if not verify_password(old_password, admin["password"]):
+        raise HTTPException(status_code=400, detail="Old password incorrect")
+
+    db.admins.update_one(
+        {"_id": admin["_id"]},
+        {"$set": {"password": hash_password(new_password)}}
+    )
+
+    return {"message": "Password updated successfully"}
+@router.post("/admin/reset-password")
+def reset_admin_password(
+    username: str = Form(...),
+    new_password: str = Form(...),
+    admin=Depends(get_current_admin)
+):
+    if admin["role"] != "superadmin":
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    db.admins.update_one(
+        {"username": username},
+        {"$set": {"password": hash_password(new_password)}}
+    )
+
+    return {"message": f"Password reset for {username}"}
