@@ -2,9 +2,7 @@
 from pymongo import MongoClient
 import os
 import urllib.parse
-from datetime import datetime
 
-from auth import hash_password
 # ===================== MONGODB CONFIG =====================
 
 USERNAME = "pasumaibharatam_db_user"
