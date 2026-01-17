@@ -2,10 +2,10 @@
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-MAX_BCRYPT_LENGTH = 72
+MAX_BCRYPT_LENGTH = 72  # bcrypt limit
 
 def hash_password(password: str) -> str:
-    # truncate if >72 bytes
+    # truncate to 72 bytes
     password_bytes = password.encode("utf-8")[:MAX_BCRYPT_LENGTH]
     return pwd_context.hash(password_bytes)
 
