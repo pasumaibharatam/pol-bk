@@ -2,15 +2,16 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
-from pymongo import MongoClient
+from fastapi import Depends, Header
 from datetime import datetime
-import os, io, shutil, urllib.parse
+import os, io
 import base64
 from createadmin import create_default_admins
-
+from database import db
+from auth import hash_password, verify_password
 # ===================== REPORTLAB =====================
 from reportlab.lib.pagesizes import A7, landscape
-from reportlab.lib.colors import HexColor, white
+from reportlab.lib.colors import HexColor
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
@@ -40,21 +41,20 @@ app.add_middleware(
 )
 
 # ===================== DIRECTORIES =====================
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # ===================== DATABASE =====================
-USERNAME = "pasumaibharatam_db_user"
-PASSWORD = urllib.parse.quote_plus("pasumai123")
-CLUSTER = "pasumai.mrsonfr.mongodb.net"
+# USERNAME = "pasumaibharatam_db_user"
+# PASSWORD = urllib.parse.quote_plus("pasumai123")
+# CLUSTER = "pasumai.mrsonfr.mongodb.net"
 
-MONGO_URL = f"mongodb+srv://{USERNAME}:{PASSWORD}@{CLUSTER}/?retryWrites=true&w=majority"
+# MONGO_URL = f"mongodb+srv://{USERNAME}:{PASSWORD}@{CLUSTER}/?retryWrites=true&w=majority"
 
-client = MongoClient(MONGO_URL)
-db = client["political_db"]
+# client = MongoClient(MONGO_URL)
+# db = client["political_db"]
 candidates_collection = db["candidates"]
 
 # ===================== DISTRICTS =====================
@@ -95,7 +95,7 @@ async def register(
 
     membership_no = generate_membership_no()
 
-    # ---------- Save photo (ONLY filename in DB) ----------
+    # ---------- Save photo (Base64) ----------
     photo_base64 = None
 
     if photo:
@@ -135,24 +135,129 @@ async def register(
         "id": str(result.inserted_id)
     }
 
-# ===================== ADMIN LIST =====================
-@app.get("/admin")
-def get_all_candidates():
+
+
+
+
+# ===================== DISTRICT SECRETARIES =====================
+@app.get("/district-secretaries")
+def get_district_secretaries():
+    return [
+        {
+            "name": "திரு. மு. செந்தில்",
+            "district": "சென்னை",
+            "photo": "/assets/district_secretaries/dum.jpeg"
+        },
+        {
+            "name": "திரு. க. ரமேஷ்",
+            "district": "மதுரை",
+            "photo": "/assets/district_secretaries/dum.jpeg"
+        },
+        {
+            "name": "திருமதி. சு. லதா",
+            "district": "கோயம்புத்தூர்",
+            "photo": "/assets/district_secretaries/dum.jpeg"
+        }
+    ]
+
+
+from jose import jwt
+from datetime import datetime, timedelta
+
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
+
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+from fastapi import APIRouter, HTTPException, Form
+
+router = APIRouter(prefix="/admin", tags=["Admin"])
+
+def get_current_admin(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    token = authorization.replace("Bearer ", "")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        admin = db.admins.find_one({"username": payload["sub"], "active": True})
+        if not admin:
+            raise Exception()
+        return admin
+    except:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+@router.post("/login")
+def admin_login(username: str = Form(...), password: str = Form(...)):
+    admin = db.admins.find_one({"username": username, "active": True})
+    if not admin or not verify_password(password, admin["password"]):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    token = create_access_token({
+        "sub": admin["username"],
+        "role": admin["role"]
+    })
+
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@router.get("/dashboard")
+def admin_dashboard(admin=Depends(get_current_admin)):
+    return {"message": f"Welcome {admin['username']}"}
+
+
+@router.post("/change-password")
+def change_password(old_password: str = Form(...), new_password: str = Form(...),
+                    admin=Depends(get_current_admin)):
+    if not verify_password(old_password, admin["password"]):
+        raise HTTPException(status_code=400, detail="Old password incorrect")
+
+    db.admins.update_one(
+        {"_id": admin["_id"]},
+        {"$set": {"password": hash_password(new_password)}}
+    )
+    return {"message": "Password updated successfully"}
+
+
+@router.post("/reset-password")
+def reset_admin_password(username: str = Form(...), new_password: str = Form(...),
+                         admin=Depends(get_current_admin)):
+    if admin["role"] != "superadmin":
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    db.admins.update_one(
+        {"username": username},
+        {"$set": {"password": hash_password(new_password)}}
+    )
+    return {"message": f"Password reset for {username}"}
+
+
+@router.get("/candidates")
+def get_all_candidates(admin=Depends(get_current_admin)):
     candidates = list(
         candidates_collection.find(
-            {},
-            {"_id": 1, "name": 1, "mobile": 1, "district": 1, "gender": 1, "age": 1}
+            {}, {"_id": 1, "name": 1, "mobile": 1, "district": 1, "gender": 1, "age": 1}
         )
     )
-
     for c in candidates:
         c["_id"] = str(c["_id"])
-
     return candidates
 
+
+@router.get("/list")
+def list_admins(admin=Depends(get_current_admin)):
+    if admin["role"] != "superadmin":
+        raise HTTPException(status_code=403)
+
+    return list(db.admins.find({}, {"_id": 0, "username": 1, "role": 1, "active": 1}))
 # ===================== ID CARD PDF =====================
-@app.get("/admin/idcard/{mobile}")
-def generate_idcard(mobile: str):
+@router.get("/idcard/{mobile}")
+def generate_idcard(mobile: str, admin=Depends(get_current_admin)):
     cnd = candidates_collection.find_one({"mobile": mobile})
     if not cnd:
         raise HTTPException(status_code=404, detail="Member not found")
@@ -223,108 +328,4 @@ def generate_idcard(mobile: str):
         headers={"Content-Disposition": "inline; filename=idcard.pdf"},
     )
 
-# ===================== DISTRICT SECRETARIES =====================
-@app.get("/district-secretaries")
-def get_district_secretaries():
-    return [
-        {
-            "name": "திரு. மு. செந்தில்",
-            "district": "சென்னை",
-            "photo": "/assets/district_secretaries/dum.jpeg"
-        },
-        {
-            "name": "திரு. க. ரமேஷ்",
-            "district": "மதுரை",
-            "photo": "/assets/district_secretaries/dum.jpeg"
-        },
-        {
-            "name": "திருமதி. சு. லதா",
-            "district": "கோயம்புத்தூர்",
-            "photo": "/assets/district_secretaries/dum.jpeg"
-        }
-    ]
-
-from passlib.context import CryptContext
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def hash_password(password: str):
-    return pwd_context.hash(password)
-
-def verify_password(password: str, hashed: str):
-    return pwd_context.verify(password, hashed)
-from jose import jwt
-from datetime import datetime, timedelta
-
-SECRET_KEY = "1234567987654321"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
-def create_access_token(data: dict):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-from fastapi import APIRouter, HTTPException, Form
-
-router = APIRouter()
-
-@router.post("/admin/login")
-def admin_login(username: str = Form(...), password: str = Form(...)):
-    admin = db.admins.find_one({"username": username, "active": True})
-    if not admin or not verify_password(password, admin["password"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token = create_access_token({
-        "sub": admin["username"],
-        "role": admin["role"]
-    })
-
-    return {
-        "access_token": token,
-        "token_type": "bearer"
-    }
-from fastapi import Depends, Header
-
-def get_current_admin(authorization: str = Header(...)):
-    try:
-        token = authorization.split(" ")[1]
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        admin = db.admins.find_one({"username": payload["sub"], "active": True})
-        if not admin:
-            raise Exception()
-        return admin
-    except:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-@app.get("/admin/dashboard")
-def admin_dashboard(admin=Depends(get_current_admin)):
-    return {"message": f"Welcome {admin['username']}"}
-@router.post("/admin/change-password")
-def change_password(
-    old_password: str = Form(...),
-    new_password: str = Form(...),
-    admin=Depends(get_current_admin)
-):
-    if not verify_password(old_password, admin["password"]):
-        raise HTTPException(status_code=400, detail="Old password incorrect")
-
-    db.admins.update_one(
-        {"_id": admin["_id"]},
-        {"$set": {"password": hash_password(new_password)}}
-    )
-
-    return {"message": "Password updated successfully"}
-@router.post("/admin/reset-password")
-def reset_admin_password(
-    username: str = Form(...),
-    new_password: str = Form(...),
-    admin=Depends(get_current_admin)
-):
-    if admin["role"] != "superadmin":
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    db.admins.update_one(
-        {"username": username},
-        {"$set": {"password": hash_password(new_password)}}
-    )
-
-    return {"message": f"Password reset for {username}"}
+app.include_router(router)
