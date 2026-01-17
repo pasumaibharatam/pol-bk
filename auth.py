@@ -1,14 +1,11 @@
-# auth.py
-from passlib.context import CryptContext
+import bcrypt
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-MAX_BCRYPT_LENGTH = 72  # bcrypt limit
-
+# Hash a password
 def hash_password(password: str) -> str:
-    # truncate to 72 bytes
-    password_bytes = password.encode("utf-8")[:72]
-    return pwd_context.hash(password_bytes)
+    # bcrypt requires bytes, so encode
+    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    return hashed.decode('utf-8')  # store as string in DB
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    plain_bytes = plain_password.encode("utf-8")[:72]
-    return pwd_context.verify(plain_bytes, hashed_password)
+# Verify a password
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
