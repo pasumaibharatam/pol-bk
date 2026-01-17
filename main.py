@@ -6,7 +6,7 @@ from pymongo import MongoClient
 from datetime import datetime
 import os, io, shutil, urllib.parse
 import base64
-
+from createadmin import create_default_admins
 
 # ===================== REPORTLAB =====================
 from reportlab.lib.pagesizes import A7, landscape
@@ -22,7 +22,9 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ===================== APP =====================
 app = FastAPI()
-
+@app.on_event("startup")
+def startup_event():
+    create_default_admins()
 pdfmetrics.registerFont(UnicodeCIDFont("HeiseiMin-W3"))
 
 # ===================== CORS =====================
@@ -241,3 +243,24 @@ def get_district_secretaries():
             "photo": "/assets/district_secretaries/dum.jpeg"
         }
     ]
+
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str):
+    return pwd_context.hash(password)
+
+def verify_password(password: str, hashed: str):
+    return pwd_context.verify(password, hashed)
+from jose import jwt
+from datetime import datetime, timedelta
+
+SECRET_KEY = "1234567987654321"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
