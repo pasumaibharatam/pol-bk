@@ -3,7 +3,7 @@ from pymongo import MongoClient
 import os
 import urllib.parse
 from datetime import datetime
-from database import db
+
 from auth import hash_password
 # ===================== MONGODB CONFIG =====================
 
